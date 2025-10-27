@@ -1,0 +1,25 @@
+# Name router vyos4
+set system host-name vyos4
+
+# Delete old OSPF and interface IPs
+delete protocols ospf
+delete interfaces ethernet eth0 address 10.85.3.2/30
+delete interfaces ethernet eth1 address 10.85.5.2/30
+delete interfaces ethernet eth2 address 10.85.6.2/30
+
+# Set new interface IPs based on the XY scheme
+set interfaces ethernet eth0 address '10.85.14.2/30'
+set interfaces ethernet eth1 address '10.85.24.2/30'
+set interfaces ethernet eth2 address '10.85.34.2/30'
+
+# Re-create OSPF with the new networks
+set protocols ospf area 0 network '10.85.14.0/30'
+set protocols ospf area 0 network '10.85.24.0/30'
+set protocols ospf area 0 network '10.85.34.0/30'
+set protocols ospf area 0 network '192.168.7.4/32'
+set protocols ospf parameters router-id '192.168.7.4'
+
+# Save configurations
+commit
+save
+exit
