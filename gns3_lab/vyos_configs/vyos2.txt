@@ -1,0 +1,26 @@
+# Name router to vyos2
+configure
+set system host-name vyos2
+
+# Delete old OSPF and interface IPs
+delete protocols ospf
+delete interfaces ethernet eth0 address 10.85.1.2/30
+delete interfaces ethernet eth1 address 10.85.4.1/30
+delete interfaces ethernet eth2 address 10.85.5.1/30
+
+# Set new interface IPs based on the XY scheme
+set interfaces ethernet eth0 address '10.85.12.2/30'
+set interfaces ethernet eth1 address '10.85.23.1/30'
+set interfaces ethernet eth2 address '10.85.24.1/30'
+
+# Re-create OSPF with the new networks
+set protocols ospf area 0 network '10.85.12.0/30'
+set protocols ospf area 0 network '10.85.23.0/30'
+set protocols ospf area 0 network '10.85.24.0/30'
+set protocols ospf area 0 network '192.168.7.2/32'
+set protocols ospf parameters router-id '192.168.7.2'
+
+# Save configurations
+commit
+save
+exit
