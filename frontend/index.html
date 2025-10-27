@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BGP Topology Viewer</title>
+    <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #121212;
+            color: #e0e0e0;
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #network-container {
+            flex: 3; /* Takes up most of the space */
+            height: 100%;
+            border-right: 2px solid #333;
+        }
+        #info-panel {
+            flex: 1; /* Takes up the remaining space */
+            padding: 20px;
+            height: 100%;
+            overflow-y: auto;
+            background-color: #1e1e1e;
+            box-sizing: border-box;
+        }
+        h1, h2 {
+            color: #2dd4bf; /* Teal accent */
+            border-bottom: 1px solid #444;
+            padding-bottom: 10px;
+            margin-top: 0;
+        }
+        #status {
+            padding: 8px;
+            border-radius: 5px;
+            text-align: center;
+            margin-bottom: 20px;
+            font-weight: bold;
+            transition: background-color 0.3s ease;
+        }
+        .connected { background-color: #28a745; color: white; }
+        .disconnected { background-color: #dc3545; color: white; }
+        .log-entry {
+            background-color: #2a2a2a;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 8px;
+            border-left: 3px solid #007bff; /* Blue */
+            font-size: 0.9em;
+            word-wrap: break-word;
+        }
+        #color-controls {
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        #color-controls button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background-color 0.2s ease;
+        }
+        #color-controls button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="network-container"></div>
+    <div id="info-panel">
+        <h1>Live Topology</h1>
+        <div id="status" class="disconnected">Connecting...</div>
+        
+        <div id="color-controls">
+            <h2>Node Colors</h2>
+            <button id="changeNodeColors">Cycle Node Colors</button>
+        </div>
+
+        <h2>Connection Log</h2>
+        <div id="logs"></div>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        const BACKEND_PORT = 8000;
+        const host = window.location.hostname || 'localhost';
+
+        // Array of colors for nodes to cycle through
+        const NODE_COLORS = [
+            { background: '#60a5fa', border: '#2563eb' },   // Blue
+            { background: '#34d399', border: '#059669' },   // Green
+            { background: '#fb923c', border: '#c2410c' },   // Orange
+            { background: '#a78bfa', border: '#7c3aed' },   // Purple
+            { background: '#f87171', border: '#ef4444' }    // Red
+        ];
+        let currentColorIndex = 0;
+
+        // --- UI ELEMENTS ---
+        const networkContainer = document.getElementById('network-container');
+        const logsContainer = document.getElementById('logs');
+        const statusDiv = document.getElementById('status');
+        const changeColorsButton = document.getElementById('changeNodeColors');
+
+        // --- VIS.JS NETWORK SETUP ---
+        const nodes = new vis.DataSet([]);
+        const edges = new vis.DataSet([]);
+        const network = new vis.Network(networkContainer, { nodes, edges }, {
+            nodes: {
+                shape: 'circle',
+                size: 25,
+                font: { color: '#ffffff', size: 14 },
+                borderWidth: 2,
+                margin: 5
+            },
+            edges: {
+                width: 2,
+                color: '#999999',
+                font: { align: 'top', color: '#e0e0e0', strokeWidth: 4, strokeColor: '#1e1e1e' },
+                arrows: { to: { enabled: false } }, 
+                smooth: false, 
+                length: 250 // Increased edge length
+            },
+            physics: { solver: 'barnesHut', stabilization: { iterations: 150 }},
+            interaction: { hover: true }
+        });
+
+        /** Cycles through predefined node colors and updates the graph */
+        function cycleNodeColors() {
+            currentColorIndex = (currentColorIndex + 1) % NODE_COLORS.length;
+            const newColor = NODE_COLORS[currentColorIndex];
+
+            const updatedNodes = nodes.map(node => ({
+                id: node.id,
+                color: {
+                    background: newColor.background,
+                    border: newColor.border,
+                    highlight: { background: newColor.background, border: newColor.border }
+                }
+            }));
+            nodes.update(updatedNodes);
+            addLogEntry(`Node colors cycled to new palette.`);
+        }
+
+        // Event listener for the color change button
+        changeColorsButton.addEventListener('click', cycleNodeColors);
+
+        /**
+         * Clears old logs and generates new, human-readable logs from the topology.
+         */
+        function generateConnectionLogs(graph) {
+            logsContainer.innerHTML = ''; // Clear previous logs
+            const timestamp = new Date().toLocaleTimeString();
+            addLogEntry(`**Update Received:** ${timestamp} &mdash; Found ${graph.nodes.length} nodes.`);
+
+            if (!graph.edges || graph.edges.length === 0) {
+                addLogEntry('No active connections (edges) were found in the topology.');
+                return;
+            }
+
+            // Create a fast lookup map to get node details by their ID
+            const nodeMap = new Map(graph.nodes.map(node => [node.id, node]));
+
+            graph.edges.forEach(edge => {
+                const fromNode = nodeMap.get(edge.from);
+                const toNode = nodeMap.get(edge.to);
+
+                if (fromNode && toNode) {
+                    const message = `<strong>${fromNode.id}</strong> (${fromNode.label}) is connected to <strong>${toNode.id}</strong> (${toNode.label}) via subnet <strong>${edge.label}</strong>`;
+                    addLogEntry(message);
+                }
+            });
+        }
+
+        /** Helper function to add a new log entry to the UI */
+        function addLogEntry(message) {
+            const logElement = document.createElement('p');
+            logElement.className = 'log-entry';
+            logElement.innerHTML = message;
+            logsContainer.appendChild(logElement);
+            logsContainer.scrollTop = logsContainer.scrollHeight; // Auto-scroll to bottom
+        }
+
+        /** Updates the vis.js graph and then generates the logs */
+        function updateTopologyGraph(graph) {
+            const initialColor = NODE_COLORS[currentColorIndex];
+
+            const formattedNodes = (graph.nodes || []).map(node => ({
+                ...node,
+                label: `${node.id}\n${node.label}`,
+                color: {
+                    background: initialColor.background,
+                    border: initialColor.border,
+                    highlight: { background: initialColor.background, border: initialColor.border }
+                }
+            }));
+            
+            nodes.clear();
+            edges.clear();
+            
+            nodes.add(formattedNodes);
+            edges.add(graph.edges || []);
+
+            network.fit();
+            generateConnectionLogs(graph);
+        }
+
+        /** Connects to the backend WebSocket to receive real-time updates */
+        function connectWebSocket() {
+            const ws = new WebSocket(`ws://${host}:${BACKEND_PORT}/ws`);
+
+            ws.onopen = () => {
+                statusDiv.textContent = 'Live Connection Active';
+                statusDiv.className = 'connected';
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+                    if (message.type === 'topology') {
+                        updateTopologyGraph(message.data);
+                    }
+                } catch (e) {
+                    console.error('Failed to parse WebSocket message:', e);
+                }
+            };
+
+            ws.onclose = () => {
+                statusDiv.textContent = 'Disconnected - Retrying...';
+                statusDiv.className = 'disconnected';
+                setTimeout(connectWebSocket, 3000); // Attempt to reconnect
+            };
+
+            ws.onerror = (error) => {
+                ws.close();
+            };
+        }
+
+        // --- INITIALIZATION ---
+        addLogEntry('Attempting to connect to the backend server...');
+        connectWebSocket();
+    </script>
