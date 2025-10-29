@@ -2,6 +2,15 @@
 configure
 set system host-name vyos1
 
+# Set BGP to router 1
+set protocols bgp system-as 65002
+set protocols bgp parameters router-id 192.168.56.2
+set protocols bgp neighbor 192.168.56.102 remote-as 65002
+set protocols bgp neighbor 192.168.56.102 port 1790 
+set protocols bgp neighbor 192.168.56.102 description 'ODL iBGP'
+set protocols bgp neighbor 192.168.56.102 address-family ipv4-unicast
+set interfaces loopback lo address 192.168.138.1/32
+
 # Delete old OSPF and interface IPs
 delete protocols ospf
 delete interfaces ethernet eth1 address 10.85.1.1/30
