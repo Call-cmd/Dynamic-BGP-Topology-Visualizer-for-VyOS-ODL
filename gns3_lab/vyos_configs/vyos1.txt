@@ -28,3 +28,10 @@ set protocols ospf area 0 network '10.85.13.0/30'
 set protocols ospf area 0 network '10.85.14.0/30'
 set protocols ospf area 0 network '192.168.7.1/32'
 set protocols ospf parameters router-id '192.168.7.1'
+
+# To send ospf over to the odl controller
+set protocols bgp address-family ipv4-unicast redistribute ospf
+
+commit
+save
+exit
